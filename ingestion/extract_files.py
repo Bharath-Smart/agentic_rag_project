@@ -4,50 +4,26 @@ from pathlib import Path
 from typing import Dict, Any, Tuple
 from dataclasses import dataclass
 
-# Docling imports
-from docling.document_converter import DocumentConverter, PdfFormatOption
-from docling.datamodel.base_models import InputFormat
-from docling.datamodel.pipeline_options import PdfPipelineOptions
+import pymupdf
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
-# os.environ["HF_HUB_DISABLE_SYMLINKS_WARNING"] = "1" # Disable symlink warnings
-
 @dataclass
 class PDFExtractionConfig:
-    """ PDF extraction configuration with GPU support"""
+    """Configuration retained for compatibility with the ingestion pipeline."""
     enable_ocr: bool = True
     images_scale: float = 2.0
     include_images: bool = True
     include_tables: bool = True 
 
 class PDFExtractor:
-    """ PDF content extractor using Docling with GPU support, without table extraction."""
+    """Lightweight text extractor for PDF documents."""
     
     def __init__(self, config: PDFExtractionConfig = None):
         self.config = config or PDFExtractionConfig()
-        self.setup_converter()
-    
-    def setup_converter(self):
-        """Setup Docling document converter with options."""
-        pipeline_options = PdfPipelineOptions()
-        pipeline_options.do_ocr = self.config.enable_ocr
-        pipeline_options.do_picture_description = self.config.include_images
-        pipeline_options.do_table_structure = self.config.include_tables
-        pipeline_options.images_scale = self.config.images_scale
-        try:
-            self.converter = DocumentConverter(
-                format_options={
-                    InputFormat.PDF: PdfFormatOption(
-                        pipeline_options=pipeline_options
-                    )
-                }
-            )
-        except Exception as e:
-            logging.error(f"Failed to initialize docling: {e}")
 
     def extract_pdf_content(self, pdf_path: str) -> Tuple[str, Dict[str, Any]]:
         """Extract content from a single PDF file."""
@@ -57,24 +33,31 @@ class PDFExtractor:
         
         logger.info(f"Extracting content from: {pdf_path.name}")
         start_time = time.time()
-                
-        result = self.converter.convert(str(pdf_path))
+        page_texts = []
+
+        with pymupdf.open(pdf_path) as document:
+            page_count = len(document)
+            for page_number, page in enumerate(document, start=1):
+                page_text = page.get_text("text").strip()
+                if page_text:
+                    page_texts.append(f"## Page {page_number}\n\n{page_text}")
+
         end_time = time.time()
-        
-        doc = result.document
-        content_text = doc.export_to_markdown()
+        content_text = "\n\n".join(page_texts)
         
         metadata = {
             "source": str(pdf_path),
             "title": pdf_path.stem,
             "processing_time": round(end_time - start_time, 2),
-            "pages": len(doc.pages),
-            "texts": len(doc.texts),
-            "pictures": len(doc.pictures),
-            "tables": len(doc.tables),
-            "extraction_method": "docling",
+            "pages": page_count,
+            "text_pages": len(page_texts),
+            "texts": len(page_texts),
+            "pictures": 0,
+            "tables": 0,
+            "characters": len(content_text),
+            "extraction_method": "pymupdf",
             "content_type": "pdf"
-        }        
+        }
         return content_text, metadata
     
 
