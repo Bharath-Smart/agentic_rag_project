@@ -1,7 +1,7 @@
 
 # Agentic RAG Project
 
-A modern Agentic RAG (Retrieval-Augmented Generation) system built with LangChain, FastAPI, and PostgreSQL (pgvector). This project provides a scalable, modular, and production-ready foundation for document-based AI applications.
+A modern Agentic RAG (Retrieval-Augmented Generation) system built with LangChain, FastAPI, and PostgreSQL (pgvector). This project provides a modular development foundation for document-based AI applications.
 ## 📋 Table of Contents
 
 - [Features](#features)
@@ -21,10 +21,10 @@ A modern Agentic RAG (Retrieval-Augmented Generation) system built with LangChai
 - 📄 Lightweight PDF text extraction with PyMuPDF
 - 💾 Database: PostgreSQL + pgvector extension
 - 🌊 Real-time streaming: Live responses via Server-Sent Events
-- 🎯 Session management: Conversation history and context retention
+- 🎯 Session management: Persisted conversation context across chat turns
 - 🐳 Docker containerization: Easy deployment
 - 🔧 Type safety: Reliable data handling with Pydantic models
-- ⚡ Instant ingestion: Upload documents and query immediately
+- 📥 CLI ingestion: Ingest PDFs from the local `documents/` directory
 
 ## 🛠️ Tech Stack
 
@@ -59,8 +59,8 @@ A modern Agentic RAG (Retrieval-Augmented Generation) system built with LangChai
 ### 1. Clone the Repository
 
 ```bash
-git clone https://github.com/serkanyasr/ntt_rag_project.git
-cd ntt_rag_project
+git clone https://github.com/Bharath-Smart/agentic_rag_project.git
+cd agentic_rag_project
 ```
 
 ### 2. Set Up Environment Variables
@@ -105,11 +105,14 @@ docker compose logs -f
 
 Access the Streamlit UI: <http://localhost:8501>
 
-The web interface now includes:
+The web interface currently includes:
 
-- **Interactive Chat**: Ask questions about your uploaded documents
+- **Interactive Chat**: Ask questions about PDFs already ingested into the database
 - **Health Monitoring**: Check API connection status
-- **Session Management**: Persistent conversation history
+- **Session Management**: Continue a conversation within the current chat session
+
+Document upload is not implemented in the web interface. Add PDFs to `documents/` and
+run the CLI ingestion workflow before querying them.
 
 ### API Usage
 
@@ -153,14 +156,22 @@ for line in response.iter_lines():
 
 ### Document Ingestion
 
-#### Command Line Ingestion
+PDF ingestion is performed from the command line. There is no user-facing upload
+endpoint or upload UI.
 
 ```bash
-# Place your PDF documents in the documents/ folder
+# Place PDF documents in the documents/ folder
 cp your_document.pdf documents/
 
-# Run the ingestion script
-python -m ingestion.ingest --documents documents/
+# Extract text, recursively chunk it, generate embeddings, and persist to PostgreSQL/pgvector
+uv run python -m ingestion.ingest --documents documents/
+```
+
+The pipeline is:
+
+```text
+PDF → PyMuPDF text extraction → RecursiveCharacterTextSplitter
+    → OpenAI embeddings → PostgreSQL/pgvector
 ```
 
 ## 📖 API Reference
@@ -171,12 +182,18 @@ python -m ingestion.ingest --documents documents/
 
 - `POST /chat` - Single chat message
 - `POST /chat/stream` - Streaming chat
+- `GET /documents` - List ingested documents
 - `GET /sessions/{session_id}` - Session metadata
 
 #### Search Endpoints
 
 - `POST /search/vector` - Vector search
 - `POST /search/hybrid` - Hybrid search
+
+Search requests accept `query`, `search_type`, and `limit` (`1`–`50`). Vector search
+uses pgvector similarity. Hybrid search combines pgvector similarity with PostgreSQL
+English full-text search using a text weight of `0.3`. Metadata filtering and reranking
+are not exposed by the current API.
 
 #### Health Check
 
@@ -203,15 +220,14 @@ python -m ingestion.ingest --documents documents/
 {
   "query": "Search query",
   "search_type": "vector",
-  "limit": 10,
-  "filters": {}
+  "limit": 10
 }
 ```
 
 ## 🏗️ Project Structure
 
 ```text
-ntt_rag_project/
+agentic_rag_project/
 ├── agent/                  # AI Agent and business logic
 │   ├── agent.py           # Main LangChain agent
 │   ├── api.py             # FastAPI endpoints
@@ -240,17 +256,21 @@ ntt_rag_project/
 
 #### Agent (`/agent/`)
 
-- **agent.py**: LangChain agent definition and tool registrations
+- **agent.py**: LangChain v1 `create_agent()` definition and tool registrations
 - **api.py**: FastAPI web server and endpoints
 - **tools.py**: Vector search, hybrid search, document retrieval tools
 - **db_utils.py**: PostgreSQL operations and connection management
 - **models.py**: Pydantic data models and validation
 
+The agent uses LangChain v1's `create_agent()` with the existing retrieval and document
+tools. The repository does not define a custom LangGraph `StateGraph`; LangChain may
+use LangGraph internally for its agent runtime.
+
 #### Ingestion (`/ingestion/`)
 
 - **ingest.py**: Main document processing pipeline
 - **extract_files.py**: PDF text extraction
-- **chunker.py**: Intelligent text chunking strategies
+- **chunker.py**: Recursive text chunking with `RecursiveCharacterTextSplitter`
 
 #### Phase 1B Chunking Note
 
@@ -264,9 +284,8 @@ are intentionally deferred to Week 2 retrieval engineering.
 ### Running Tests
 
 ```bash
-pytest
-pytest tests/agent/test_models.py
-pytest --cov=agent --cov=ingestion
+uv run pytest -q
+uv run pytest tests/agent/test_models.py
 ```
 
 ### Test Categories
@@ -285,7 +304,6 @@ python -m venv venv
 source venv/bin/activate  # Windows: venv\Scripts\activate
 pip install uv
 uv sync --locked
-pre-commit install
 ```
 
 
@@ -341,6 +359,6 @@ netstat -an | grep :8501
 
 ## 📄 License
 
-MIT License - See `LICENSE` for details.
+MIT License - See `LICENCE` for details.
 
 ---
