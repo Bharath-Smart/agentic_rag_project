@@ -1,5 +1,4 @@
 
-import os
 import json
 import logging
 from contextlib import asynccontextmanager
@@ -11,10 +10,10 @@ from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 import uvicorn
-from dotenv import load_dotenv
-from pydantic_ai.messages import PartStartEvent, PartDeltaEvent, TextPartDelta
+from langchain.messages import AIMessage, AIMessageChunk
 
-from .agent import rag_agent, AgentDependencies
+from .agent import rag_agent
+from .config import settings
 from .db_utils import (
     execute_init_sql,
     initialize_database,
@@ -43,16 +42,13 @@ from .tools import (
     DocumentListInput
 )
 
-# Load environment variables
-load_dotenv()
-
 logger = logging.getLogger(__name__)
 
 # Application configuration
-APP_ENV = os.getenv("APP_ENV", "development")
-APP_HOST = os.getenv("APP_HOST", "0.0.0.0")
-APP_PORT = int(os.getenv("APP_PORT", 8000))
-LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
+APP_ENV = settings.app_env
+APP_HOST = settings.app_host
+APP_PORT = settings.app_port
+LOG_LEVEL = settings.log_level
 
 # Configure logging
 logging.basicConfig(
@@ -159,72 +155,50 @@ async def get_conversation_context(
         for msg in messages
     ]
 
-def extract_tool_calls(result) -> List[ToolCall]:
-    """
-    Extract tool calls from Pydantic AI result.
-    
-    Args:
-        result: Pydantic AI result object
-    
-    Returns:
-        List of ToolCall objects
-    """
-    tools_used = []
-    
-    try:
-        # Get all messages from the result
-        messages = result.all_messages()
-        
-        for message in messages:
-            if hasattr(message, 'parts'):
-                for part in message.parts:
-                    # Check if this is a tool call part
-                    if part.__class__.__name__ == 'ToolCallPart':
-                        try:
-                            # Debug logging to understand structure
-                            logger.debug(f"ToolCallPart attributes: {dir(part)}")
-                            logger.debug(f"ToolCallPart content: tool_name={getattr(part, 'tool_name', None)}")
-                            
-                            # Extract tool information safely
-                            tool_name = str(part.tool_name) if hasattr(part, 'tool_name') else 'unknown'
-                            
-                            # Get args - the args field is a JSON string in Pydantic AI
-                            tool_args = {}
-                            if hasattr(part, 'args') and part.args is not None:
-                                if isinstance(part.args, str):
-                                    # Args is a JSON string, parse it
-                                    try:
+def extract_tool_calls(result: Dict[str, Any]) -> List[ToolCall]:
+    """Extract tool calls from a LangChain agent result."""
+    tools_used: List[ToolCall] = []
+    seen_ids = set()
 
-                                        tool_args = json.loads(part.args)
-                                        logger.debug(f"Parsed args from JSON string: {tool_args}")
-                                    except json.JSONDecodeError as e:
-                                        logger.debug(f"Failed to parse args JSON: {e}")
-                                        tool_args = {}
-                                elif isinstance(part.args, dict):
-                                    tool_args = part.args
-                                    logger.debug(f"Args already a dict: {tool_args}")
-                            
-                            
-                            # Get tool call ID
-                            tool_call_id = None
-                            if hasattr(part, 'tool_call_id'):
-                                tool_call_id = str(part.tool_call_id) if part.tool_call_id else None
-                            
-                            # Create ToolCall with explicit field mapping
-                            tool_call_data = {
-                                "tool_name": tool_name,
-                                "args": tool_args,
-                                "tool_call_id": tool_call_id
-                            }
-                            logger.debug(f"Creating ToolCall with data: {tool_call_data}")
-                            tools_used.append(ToolCall(**tool_call_data))
-                        except Exception as e:
-                            logger.debug(f"Failed to parse tool call part: {e}")
-                            continue
+    try:
+        for message in result.get("messages", []):
+            if not isinstance(message, AIMessage):
+                continue
+            for tool_call in message.tool_calls:
+                tool_call_id = tool_call.get("id")
+                if tool_call_id and tool_call_id in seen_ids:
+                    continue
+                if tool_call_id:
+                    seen_ids.add(tool_call_id)
+                tools_used.append(
+                    ToolCall(
+                        tool_name=tool_call.get("name", "unknown"),
+                        args=tool_call.get("args", {}),
+                        tool_call_id=tool_call_id,
+                    )
+                )
     except Exception as e:
         logger.warning(f"Failed to extract tool calls: {e}")
-    
+
     return tools_used
+
+def extract_response_text(result: Dict[str, Any]) -> str:
+    """Extract the final assistant text from a LangChain agent result."""
+    messages = result.get("messages", [])
+    if not messages:
+        return ""
+
+    content = messages[-1].content
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        return "".join(
+            block.get("text", "")
+            for block in content
+            if isinstance(block, dict)
+        )
+    return str(content)
+
 
 async def save_conversation_turn(
     session_id: str,
@@ -276,12 +250,6 @@ async def execute_agent(
         Tuple of (agent response, tools used)
     """
     try:
-        # Create dependencies
-        deps = AgentDependencies(
-            session_id=session_id,
-            user_id=user_id
-        )
-        
         # Get conversation context
         context = await get_conversation_context(session_id)
         
@@ -295,9 +263,11 @@ async def execute_agent(
             full_prompt = f"Previous conversation:\n{context_str}\n\nCurrent question: {message}"
         
         # Run the agent
-        result = await rag_agent.run(full_prompt, deps=deps)
-        
-        response = result.output
+        result = await rag_agent.ainvoke(
+            {"messages": [{"role": "user", "content": full_prompt}]}
+        )
+
+        response = extract_response_text(result)
         tools_used = extract_tool_calls(result)
         
         # Save conversation if requested
@@ -394,12 +364,6 @@ async def chat_stream(request: ChatRequest):
             try:
                 yield f"data: {json.dumps({'type': 'session', 'session_id': session_id})}\n\n"
                 
-                # Create dependencies
-                deps = AgentDependencies(
-                    session_id=session_id,
-                    user_id=request.user_id
-                )
-                
                 # Get conversation context
                 context = await get_conversation_context(session_id)
                 
@@ -421,26 +385,23 @@ async def chat_stream(request: ChatRequest):
                 )
                 
                 full_response = ""
-                
-                async with rag_agent.iter(full_prompt, deps=deps) as run:
-                    async for node in run:
-                        if rag_agent.is_model_request_node(node):
-                            async with node.stream(run.ctx) as request_stream:
-                                async for event in request_stream:
-                                    
-                                    if isinstance(event, PartStartEvent) and event.part.part_kind == 'text':
-                                        delta_content = event.part.content
-                                        yield f"data: {json.dumps({'type': 'text', 'content': delta_content})}\n\n"
-                                        full_response += delta_content
-                                        
-                                    elif isinstance(event, PartDeltaEvent) and isinstance(event.delta, TextPartDelta):
-                                        delta_content = event.delta.content_delta
-                                        yield f"data: {json.dumps({'type': 'text', 'content': delta_content})}\n\n"
-                                        full_response += delta_content
-                
-                # Extract tools used from the final result
-                result = run.result
-                tools_used = extract_tool_calls(result)
+                stream_messages = []
+                async for chunk in rag_agent.astream(
+                    {"messages": [{"role": "user", "content": full_prompt}]},
+                    stream_mode=["messages", "updates"],
+                    version="v2",
+                ):
+                    if chunk["type"] == "messages":
+                        token, _metadata = chunk["data"]
+                        if isinstance(token, AIMessageChunk) and token.text:
+                            full_response += token.text
+                            yield f"data: {json.dumps({'type': 'text', 'content': token.text})}\n\n"
+                    elif chunk["type"] == "updates":
+                        for update in chunk["data"].values():
+                            if isinstance(update, dict) and "messages" in update:
+                                stream_messages.extend(update["messages"])
+
+                tools_used = extract_tool_calls({"messages": stream_messages})
                 
                 # Send tools used information
                 if tools_used:
@@ -477,11 +438,10 @@ async def chat_stream(request: ChatRequest):
         
         return StreamingResponse(
             generate_stream(),
-            media_type="text/plain",
+            media_type="text/event-stream",
             headers={
                 "Cache-Control": "no-cache",
                 "Connection": "keep-alive",
-                "Content-Type": "text/event-stream"
             }
         )
         

@@ -1,7 +1,7 @@
 
 # Agentic RAG Project
 
-A modern Agentic RAG (Retrieval-Augmented Generation) system built with Pydantic AI, FastAPI, and PostgreSQL (pgvector). This project provides a scalable, modular, and production-ready foundation for document-based AI applications.
+A modern Agentic RAG (Retrieval-Augmented Generation) system built with LangChain, FastAPI, and PostgreSQL (pgvector). This project provides a scalable, modular, and production-ready foundation for document-based AI applications.
 ## 📋 Table of Contents
 
 - [Features](#features)
@@ -16,9 +16,9 @@ A modern Agentic RAG (Retrieval-Augmented Generation) system built with Pydantic
 
 ## ✨ Features
 
-- 🧠 Pydantic AI-based intelligent agent system
+- 🧠 LangChain-based intelligent agent system
 - 🔍 Multiple search strategies: Vector Search and Hybrid Search
-- 📄 Advanced PDF processing: Table and image extraction with Docling
+- 📄 Lightweight PDF text extraction with PyMuPDF
 - 💾 Database: PostgreSQL + pgvector extension
 - 🌊 Real-time streaming: Live responses via Server-Sent Events
 - 🎯 Session management: Conversation history and context retention
@@ -30,10 +30,11 @@ A modern Agentic RAG (Retrieval-Augmented Generation) system built with Pydantic
 
 ### Backend
 
-- [Pydantic AI](https://ai.pydantic.dev/) - AI Agent Framework
+- [LangChain](https://docs.langchain.com/oss/python/langchain) - AI Agent Framework
 - [FastAPI](https://fastapi.tiangolo.com/) - Modern Python web framework
-- [LangChain](https://langchain.readthedocs.io/) - Document processing and embeddings
-- [Docling](https://github.com/DS4SD/docling) - PDF extraction and analysis
+- [LangChain OpenAI](https://docs.langchain.com/oss/python/integrations/providers/openai) - OpenAI chat and embedding integrations
+- [LangChain text splitters](https://docs.langchain.com/oss/python/integrations/splitters) - Recursive document chunking
+- [PyMuPDF](https://pymupdf.readthedocs.io/) - PDF text extraction
 - [AsyncPG](https://magicstack.github.io/asyncpg/) - PostgreSQL async client
 - [pgvector](https://github.com/pgvector/pgvector) - Vector similarity search
 
@@ -51,7 +52,7 @@ A modern Agentic RAG (Retrieval-Augmented Generation) system built with Pydantic
 
 ### Prerequisites
 
-- Python 3.12+
+- Python 3.12.6
 - Docker & Docker Compose
 - Git
 
@@ -94,8 +95,8 @@ EMBEDDING_MODEL=text-embedding-3-small
 ### 3. Start with Docker
 
 ```bash
-docker-compose up -d
-docker-compose logs -f
+docker compose up -d
+docker compose logs -f
 ```
 
 ## 📚 Usage
@@ -170,7 +171,7 @@ python -m ingestion.ingest --documents documents/
 
 - `POST /chat` - Single chat message
 - `POST /chat/stream` - Streaming chat
-- `GET /chat/sessions/{session_id}` - Session history
+- `GET /sessions/{session_id}` - Session metadata
 
 #### Search Endpoints
 
@@ -212,8 +213,9 @@ python -m ingestion.ingest --documents documents/
 ```text
 ntt_rag_project/
 ├── agent/                  # AI Agent and business logic
-│   ├── agent.py           # Main Pydantic AI agent
+│   ├── agent.py           # Main LangChain agent
 │   ├── api.py             # FastAPI endpoints
+│   ├── config.py          # Centralized environment configuration
 │   ├── db_utils.py        # Database operations
 │   ├── models.py          # Pydantic models
 │   ├── prompts.py         # System prompts
@@ -238,7 +240,7 @@ ntt_rag_project/
 
 #### Agent (`/agent/`)
 
-- **agent.py**: Pydantic AI agent definition and tool registrations
+- **agent.py**: LangChain agent definition and tool registrations
 - **api.py**: FastAPI web server and endpoints
 - **tools.py**: Vector search, hybrid search, document retrieval tools
 - **db_utils.py**: PostgreSQL operations and connection management
@@ -247,8 +249,15 @@ ntt_rag_project/
 #### Ingestion (`/ingestion/`)
 
 - **ingest.py**: Main document processing pipeline
-- **extract_files.py**: PDF text, table, and image extraction
+- **extract_files.py**: PDF text extraction
 - **chunker.py**: Intelligent text chunking strategies
+
+#### Phase 1B Chunking Note
+
+Phase 1B replaced the experimental semantic chunker with recursive chunking. On the
+verified corpus, the chunk count changed from 424 in Phase 1A to 3,177 in Phase 1B.
+Chunking quality, retrieval impact, storage and cost implications, and parameter tuning
+are intentionally deferred to Week 2 retrieval engineering.
 
 ## 🧪 Testing
 
@@ -275,7 +284,7 @@ pytest --cov=agent --cov=ingestion
 python -m venv venv
 source venv/bin/activate  # Windows: venv\Scripts\activate
 pip install uv
-uv pip install -r pyproject.toml
+uv sync --locked
 pre-commit install
 ```
 
@@ -284,7 +293,7 @@ pre-commit install
 
 ```bash
 export LOG_LEVEL=DEBUG
-docker-compose logs -f api
+docker compose logs -f api
 ```
 
 ## 🔧 Configuration
@@ -293,18 +302,18 @@ docker-compose logs -f api
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `DB_NAME` | PostgreSQL database name | `rag_db` |
-| `DB_USER` | PostgreSQL user | `rag_user` |
+| `DB_NAME` | PostgreSQL database name | `vector_db` |
+| `DB_USER` | PostgreSQL user | `postgres` |
 | `DB_PASSWORD` | PostgreSQL password | - |
 | `OPENAI_API_KEY` | OpenAI API key | - |
 | `APP_PORT` | FastAPI port | `8058` |
 | `SERVER_PORT` | Streamlit port | `8501` |
-| `LLM_MODEL` | LLM model | `gpt-4` |
+| `LLM_CHOICE` | LLM model | `gpt-4o-mini` |
 | `EMBEDDING_MODEL` | Embedding model | `text-embedding-3-small` |
 
 ### Docker Compose Overrides
 
-You can create a `docker-compose.override.yml` for custom configurations.
+You can create a `docker-compose.override.yml` for custom development configurations.
 
 ## 🐛 Troubleshooting
 
@@ -313,8 +322,8 @@ You can create a `docker-compose.override.yml` for custom configurations.
 #### Database Connection Error
 
 ```bash
-docker-compose ps postgres
-docker-compose logs postgres
+docker compose ps postgres
+docker compose logs postgres
 ```
 
 #### OpenAI API Error

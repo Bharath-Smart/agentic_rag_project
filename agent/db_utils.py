@@ -1,5 +1,4 @@
 
-import os
 import json
 from typing import List, Dict, Any, Optional
 from datetime import datetime, timedelta, timezone
@@ -8,10 +7,7 @@ import logging
 
 import asyncpg
 from asyncpg.pool import Pool
-from dotenv import load_dotenv
-
-# Load environment variables
-load_dotenv()
+from .config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -26,11 +22,11 @@ class DatabasePool:
         Args:
             database_url: PostgreSQL connection URL
         """
-        USER = os.getenv("DB_USER", "postgres")
-        PASSWORD = os.getenv("DB_PASSWORD", "postgres")
-        HOST = os.getenv("DB_HOST", "postgres")
-        PORT = os.getenv("DB_PORT", 5432)
-        DBNAME = os.getenv("DB_NAME", "postgres")
+        USER = settings.db_user
+        PASSWORD = settings.db_password
+        HOST = settings.db_host
+        PORT = settings.db_port
+        DBNAME = settings.db_name
 
         self.database_url = database_url  or f"postgresql://{USER}:{PASSWORD}@{HOST}:{PORT}/{DBNAME}"
         if not self.database_url:

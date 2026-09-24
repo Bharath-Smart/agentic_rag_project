@@ -20,7 +20,7 @@ os.environ.setdefault("DATABASE_URL", "postgresql://test:test@localhost:5432/tes
 
 # OpenAI API Configuration
 os.environ.setdefault("OPENAI_API_KEY", "sk-test-key-for-testing")
-os.environ.setdefault("LLM_CHOICE", "gpt-4-turbo-preview")
+os.environ.setdefault("LLM_CHOICE", "gpt-4o-mini")
 os.environ.setdefault("EMBEDDING_MODEL", "text-embedding-3-small")
 
 
@@ -67,25 +67,13 @@ def mock_llm_model():
 
 
 @pytest.fixture
-def mock_pydantic_agent():
-    """Mock Pydantic AI agent for testing."""
-    with patch('pydantic_ai.Agent') as mock_agent_class:
-        mock_agent = AsyncMock()
-        
-        # Mock agent run response
-        mock_result = Mock()
-        mock_result.data = "Mocked agent response"
-        mock_result.tool_calls.return_value = []
-        mock_agent.run = AsyncMock(return_value=mock_result)
-        
-        # Mock agent iter for streaming
-        mock_run_context = AsyncMock()
-        mock_run_context.__aenter__ = AsyncMock(return_value=mock_run_context)
-        mock_run_context.__aexit__ = AsyncMock(return_value=None)
-        mock_agent.iter.return_value = mock_run_context
-        
-        mock_agent_class.return_value = mock_agent
-        yield mock_agent
+def mock_langchain_agent():
+    """Mock LangChain agent for tests that exercise API orchestration."""
+    mock_agent = AsyncMock()
+    mock_agent.ainvoke = AsyncMock(
+        return_value={"messages": [Mock(content="Mocked agent response", tool_calls=[])]}
+    )
+    return mock_agent
 
 
 @pytest.fixture

@@ -2,7 +2,6 @@ import logging
 import time
 from pathlib import Path
 from typing import Dict, Any, Tuple
-from dataclasses import dataclass
 
 import pymupdf
 
@@ -11,20 +10,9 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
-@dataclass
-class PDFExtractionConfig:
-    """Configuration retained for compatibility with the ingestion pipeline."""
-    enable_ocr: bool = True
-    images_scale: float = 2.0
-    include_images: bool = True
-    include_tables: bool = True 
-
 class PDFExtractor:
     """Lightweight text extractor for PDF documents."""
     
-    def __init__(self, config: PDFExtractionConfig = None):
-        self.config = config or PDFExtractionConfig()
-
     def extract_pdf_content(self, pdf_path: str) -> Tuple[str, Dict[str, Any]]:
         """Extract content from a single PDF file."""
         pdf_path = Path(pdf_path)
@@ -51,9 +39,6 @@ class PDFExtractor:
             "processing_time": round(end_time - start_time, 2),
             "pages": page_count,
             "text_pages": len(page_texts),
-            "texts": len(page_texts),
-            "pictures": 0,
-            "tables": 0,
             "characters": len(content_text),
             "extraction_method": "pymupdf",
             "content_type": "pdf"
@@ -61,6 +46,6 @@ class PDFExtractor:
         return content_text, metadata
     
 
-def create_pdf_extractor(config: PDFExtractionConfig = None) -> PDFExtractor:
-    """Create PDF extractor instance"""
-    return PDFExtractor(config)
+def create_pdf_extractor() -> PDFExtractor:
+    """Create the lightweight PDF text extractor."""
+    return PDFExtractor()

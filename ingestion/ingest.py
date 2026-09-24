@@ -6,27 +6,22 @@ import logging
 import os
 from typing import Any, Dict, List, Optional
 from pathlib import Path
-from dotenv import load_dotenv
 from langchain_openai import OpenAIEmbeddings
-
 from warnings import filterwarnings
 filterwarnings("ignore", category=UserWarning)
 
 from agent.db_utils import close_database, initialize_database, db_pool, execute_init_sql
 from agent.models import IngestionConfig, IngestionResult
 # Import the PDF extractor
-from .extract_files import create_pdf_extractor, PDFExtractionConfig
+from .extract_files import create_pdf_extractor
 from .chunker import ChunkingConfig, DocumentChunk, create_chunker
 from agent.providers import get_embedding_model
-
-# Load environment variables
-load_dotenv()
 
 logger = logging.getLogger(__name__)
 
 
 class DocumentIngestionPipeline:
-    """Pipeline for ingesting documents with table/image processing into vector DB"""
+    """Pipeline for ingesting extracted PDF text into the vector database."""
 
     def __init__(self, config: IngestionConfig, documents_folder: str = "documents", 
                 clean_before_ingest: bool = False, sql_schema_path: str = "sql/schema.sql"):
@@ -45,24 +40,15 @@ class DocumentIngestionPipeline:
         self.clean_before_ingest = clean_before_ingest
         self.sql_schema_path = sql_schema_path
         
-        # Configure  PDF extraction
-        self.extractor_config = PDFExtractionConfig(
-            enable_ocr=False,
-            images_scale=1.0,
-            include_images=True,
-            include_tables=True,
-        )
-
         # Configure chunking
         self.chunker_config = ChunkingConfig(
             chunk_size=config.chunk_size,
             chunk_overlap=config.chunk_overlap,
             max_chunk_size=config.max_chunk_size,
-            use_semantic_splitting=config.use_semantic_chunking
         )
 
         # Create PDF extractor
-        self.extractor = create_pdf_extractor(self.extractor_config)
+        self.extractor = create_pdf_extractor()
         # Create chunker
         self.chunker = create_chunker(self.chunker_config)
         self._initialized = False
@@ -113,13 +99,12 @@ class DocumentIngestionPipeline:
         """
         start_time = datetime.now()
         
-        # Extract document content with  extraction
+        # Extract document text with PyMuPDF.
         document_content, document_metadata = self.extractor.extract_pdf_content(file_path)
         document_source = os.path.relpath(file_path, self.documents_folder)
         document_title = document_metadata.get("title", document_source)
 
         logger.info(f"Processing document: {document_title}")
-        logger.info(f"Found {document_metadata.get('pictures', 0)} images and {document_metadata.get('tables', 0)} tables")
 
         # Chunk the main document content
         main_chunks = self.chunker.chunk_content(
@@ -286,7 +271,7 @@ class DocumentIngestionPipeline:
         chunks: List[DocumentChunk],
         metadata: Dict[str, Any]
     ) -> str:
-        """Save document and chunks to PostgreSQL with  metadata."""
+        """Save document and chunks to PostgreSQL with metadata."""
         async with db_pool.acquire() as conn:
             async with conn.transaction():
                 # Insert document
@@ -335,16 +320,13 @@ class DocumentIngestionPipeline:
 
 async def main():
     """Main function for running  ingestion."""
-    parser = argparse.ArgumentParser(description=" Document ingestion with table/image processing")
+    parser = argparse.ArgumentParser(description="PDF text ingestion")
     parser.add_argument("--documents", "-d", default="documents", help="Documents folder path")
     parser.add_argument("--clean", "-c", action="store_true", help="Clean existing data before ingestion")
     parser.add_argument("--chunk-size", type=int, default=850, help="Chunk size for splitting documents")
-    parser.add_argument("--no-semantic", action="store_true", help="Disable semantic chunking")
     parser.add_argument("--chunk-overlap", type=int, default=150, help="Chunk overlap size")
     parser.add_argument("--verbose", "-v", action="store_true", help="Enable verbose logging")
     parser.add_argument("--sql-schema-path", "-sql", default="sql/schema.sql", help="Path to SQL schema file")
-    parser.add_argument("--no-images", action="store_true", help="Skip image extraction")
-    parser.add_argument("--no-tables", action="store_true", help="Skip table extraction")
     args = parser.parse_args()
 
     # Configure logging
@@ -358,10 +340,9 @@ async def main():
     config = IngestionConfig(
         chunk_size=args.chunk_size,
         chunk_overlap=args.chunk_overlap,
-        use_semantic_chunking=not args.no_semantic,
     )
     
-    # Create and run  pipeline
+    # Create and run the ingestion pipeline.
     pipeline = DocumentIngestionPipeline(
         config=config,
         documents_folder=args.documents,
@@ -369,11 +350,6 @@ async def main():
         sql_schema_path=args.sql_schema_path
     )
 
-
-    if args.no_images:
-        pipeline.extractor_config.include_images = False
-    if args.no_tables:
-        pipeline.extractor_config.include_tables = False
 
     def progress_callback(current: int, total: int):
         print(f"Progress: {current}/{total} documents processed")
@@ -392,8 +368,6 @@ async def main():
         print("="*60)
         print(f"Documents processed: {len(results)}")
         print(f"Total chunks created: {sum(r.chunks_created for r in results)}")
-        print(f"Images extracted: {pipeline.extractor_config.include_images}")
-        print(f"Tables extracted: {pipeline.extractor_config.include_tables}")
         print(f"Total processing time: {total_time:.2f} seconds")
         print("="*60)
         

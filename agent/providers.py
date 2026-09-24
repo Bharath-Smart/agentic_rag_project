@@ -1,16 +1,11 @@
 
-import os
 from typing import Optional
-from pydantic_ai.providers.openai import OpenAIProvider
-from pydantic_ai.models.openai import OpenAIChatModel
+from langchain_openai import ChatOpenAI
 import openai
-from dotenv import load_dotenv
+from .config import settings
 
 
-load_dotenv()
-
-
-def get_llm_model(model_choice: Optional[str] = None) -> OpenAIChatModel:
+def get_llm_model(model_choice: Optional[str] = None) -> ChatOpenAI:
     """
     Get LLM model configuration based on environment variables.
     
@@ -20,11 +15,13 @@ def get_llm_model(model_choice: Optional[str] = None) -> OpenAIChatModel:
     Returns:
         Configured OpenAI-compatible model
     """
-    llm_choice = model_choice or os.getenv('LLM_CHOICE', 'gpt-4-turbo-preview')
-    api_key = os.getenv('OPENAI_API_KEY', 'LLM_API_KEY')
+    llm_choice = model_choice or settings.llm_choice
+    api_key = settings.openai_api_key
 
-    provider = OpenAIProvider(api_key=api_key)
-    return OpenAIChatModel(llm_choice, provider=provider)
+    model_kwargs = {"model": llm_choice}
+    if api_key:
+        model_kwargs["api_key"] = api_key
+    return ChatOpenAI(**model_kwargs)
 
 
 def get_embedding_client() -> openai.AsyncOpenAI:
@@ -34,10 +31,8 @@ def get_embedding_client() -> openai.AsyncOpenAI:
     Returns:
         Configured OpenAI-compatible client for embeddings
     """
-    api_key = os.getenv('OPENAI_API_KEY')
-    
     return openai.AsyncOpenAI(
-        api_key=api_key
+        api_key=settings.openai_api_key
     )
 
 
@@ -48,5 +43,5 @@ def get_embedding_model() -> str:
     Returns:
         Embedding model name
     """
-    return os.getenv('EMBEDDING_MODEL', 'text-embedding-3-small')
+    return settings.embedding_model
 

@@ -3,15 +3,10 @@ import requests
 import aiohttp
 import asyncio
 import json
-from dotenv import load_dotenv
-import os
-load_dotenv()
+from agent.config import settings
 
 # Application configuration
-APP_HOST = os.getenv("APP_HOST", "0.0.0.0")
-APP_PORT = int(os.getenv("APP_PORT", 8000))
-
-API_URL = os.getenv("API_URL", f"http://localhost:{APP_PORT}")
+API_URL = settings.api_url
 
 st.set_page_config(page_title="Agentic RAG", page_icon="🤖", layout="wide")
 USER_ID = "user"

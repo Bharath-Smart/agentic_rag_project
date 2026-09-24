@@ -1,9 +1,8 @@
 
 import logging
 from typing import Dict, Any, List, Optional
-from dataclasses import dataclass
-from pydantic_ai import Agent, RunContext
-from dotenv import load_dotenv
+from langchain.agents import create_agent
+from langchain.tools import tool
 from .prompts import SYSTEM_PROMPT
 from .providers import get_llm_model
 from .tools import (
@@ -17,37 +16,11 @@ from .tools import (
     DocumentListInput
 )
 
-# Load environment variables
-load_dotenv()
-
 logger = logging.getLogger(__name__)
 
 
-@dataclass
-class AgentDependencies:
-    """Dependencies for the agent."""
-    session_id: str
-    user_id: Optional[str] = None
-    search_preferences: Dict[str, Any] = None
-    
-    def __post_init__(self):
-        if self.search_preferences is None:
-            self.search_preferences = {
-                "use_vector": True,
-                "default_limit": 10
-            }
-
-# Initialize the agent with flexible model configuration
-rag_agent = Agent(
-    get_llm_model(),
-    deps_type=AgentDependencies,
-    system_prompt=SYSTEM_PROMPT
-)
-
-# Register tools with proper docstrings (no description parameter)
-@rag_agent.tool
+@tool
 async def vector_search(
-    ctx: RunContext[AgentDependencies],
     query: str,
     limit: int = 10
 ) -> List[Dict[str, Any]]:
@@ -84,9 +57,8 @@ async def vector_search(
         for r in results
     ]
 
-@rag_agent.tool
+@tool
 async def hybrid_search(
-    ctx: RunContext[AgentDependencies],
     query: str,
     limit: int = 10,
     text_weight: float = 0.3
@@ -127,9 +99,8 @@ async def hybrid_search(
     ]
 
 
-@rag_agent.tool
+@tool
 async def get_document(
-    ctx: RunContext[AgentDependencies],
     document_id: str
 ) -> Optional[Dict[str, Any]]:
     """
@@ -161,9 +132,8 @@ async def get_document(
     
     return None
 
-@rag_agent.tool
+@tool
 async def list_documents(
-    ctx: RunContext[AgentDependencies],
     limit: int = 20,
     offset: int = 0
 ) -> List[Dict[str, Any]]:
@@ -196,4 +166,11 @@ async def list_documents(
         }
         for d in documents
     ]
+
+
+rag_agent = create_agent(
+    model=get_llm_model(),
+    tools=[vector_search, hybrid_search, get_document, list_documents],
+    system_prompt=SYSTEM_PROMPT,
+)
 

@@ -208,14 +208,12 @@ class TestConfigurationModels:
         config = IngestionConfig(
             chunk_size=1000,
             chunk_overlap=200,
-            max_chunk_size=2000,
-            use_semantic_chunking=True
+            max_chunk_size=2000
         )
         
         assert config.chunk_size == 1000
         assert config.chunk_overlap == 200
         assert config.max_chunk_size == 2000
-        assert config.use_semantic_chunking is True
     
     def test_ingestion_config_validation(self):
         """Test ingestion config validation."""

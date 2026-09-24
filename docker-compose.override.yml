@@ -1,10 +1,13 @@
 services:
   api:
     volumes:
-      - .:/app
+      - ./agent:/app/agent
+      - ./ingestion:/app/ingestion
+      - ./sql:/app/sql
+      - ./documents:/app/documents
     command: uvicorn agent.api:app --host ${APP_HOST} --port ${APP_PORT} --reload
 
   ui:
     volumes:
-      - .:/app
+      - ./ui:/app/ui
     command: streamlit run ui/app.py --server.port=${SERVER_PORT} --server.address=${SERVER_HOST}

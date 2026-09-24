@@ -9,7 +9,7 @@ from langchain_core.documents import Document
 from ingestion.chunker import (
     ChunkingConfig,
     DocumentChunk,
-    PDFSemanticChunker,
+    PDFTextChunker,
     create_chunker
 )
 
@@ -25,7 +25,6 @@ class TestChunkingConfig:
         assert config.chunk_overlap == 200
         assert config.min_chunk_size == 100
         assert config.max_chunk_size == 2000
-        assert config.use_semantic_splitting is True
     
     def test_custom_config(self):
         """Test custom chunking configuration."""
@@ -33,13 +32,11 @@ class TestChunkingConfig:
             chunk_size=1500,
             chunk_overlap=300,
             min_chunk_size=50,
-            use_semantic_splitting=False
         )
         
         assert config.chunk_size == 1500
         assert config.chunk_overlap == 300
         assert config.min_chunk_size == 50
-        assert config.use_semantic_splitting is False
     
     def test_invalid_config_overlap_too_large(self):
         """Test invalid configuration with overlap >= chunk_size."""
@@ -87,35 +84,24 @@ class TestDocumentChunk:
         assert chunk.token_count == len("Test content") // 4
 
 
-class TestPDFSemanticChunker:
-    """Test PDF semantic chunker."""
+class TestPDFTextChunker:
+    """Test PDF text chunker."""
     
     def test_chunker_initialization_recursive(self):
         """Test chunker initialization with recursive splitter."""
-        config = ChunkingConfig(use_semantic_splitting=False)
-        chunker = PDFSemanticChunker(config)
+        config = ChunkingConfig()
+        chunker = PDFTextChunker(config)
         
         assert chunker.config == config
-        assert hasattr(chunker, 'fallback_splitter')
-    
-    @patch('ingestion.chunker.OpenAIEmbeddings')
-    def test_chunker_initialization_semantic(self, mock_embeddings):
-        """Test chunker initialization with semantic splitter."""
-        config = ChunkingConfig(use_semantic_splitting=True)
-        chunker = PDFSemanticChunker(config)
-        
-        assert chunker.config == config
-        assert hasattr(chunker, 'semantic_splitter')
-        mock_embeddings.assert_called_once()
+        assert hasattr(chunker, 'splitter')
     
     def test_chunk_content_recursive(self):
         """Test chunking content with recursive splitter."""
         config = ChunkingConfig(
             chunk_size=100,
             chunk_overlap=20,
-            use_semantic_splitting=False
         )
-        chunker = PDFSemanticChunker(config)
+        chunker = PDFTextChunker(config)
         
         # Create test content
         long_text = "This is a test document. " * 20  # ~500 chars
@@ -134,7 +120,7 @@ class TestPDFSemanticChunker:
     def test_chunk_empty_content(self):
         """Test chunking empty content."""
         config = ChunkingConfig()
-        chunker = PDFSemanticChunker(config)
+        chunker = PDFTextChunker(config)
         
         chunks = chunker.chunk_content("")
         
@@ -142,8 +128,8 @@ class TestPDFSemanticChunker:
     
     def test_chunk_content_with_metadata(self):
         """Test chunking preserves and enhances metadata."""
-        config = ChunkingConfig(use_semantic_splitting=False, chunk_size=500, chunk_overlap=50)
-        chunker = PDFSemanticChunker(config)
+        config = ChunkingConfig(chunk_size=500, chunk_overlap=50)
+        chunker = PDFTextChunker(config)
         
         content = "This is a test document with some content that should be split."
         metadata = {"author": "Test Author", "category": "Test"}
@@ -172,18 +158,16 @@ class TestCreateChunker:
         config = ChunkingConfig()
         chunker = create_chunker(config)
         
-        assert isinstance(chunker, PDFSemanticChunker)
+        assert isinstance(chunker, PDFTextChunker)
         assert chunker.config.chunk_size == 1000
-        assert chunker.config.use_semantic_splitting is True
     
     def test_create_chunker_custom_config(self):
         """Test creating chunker with custom config."""
-        config = ChunkingConfig(chunk_size=500, use_semantic_splitting=False)
+        config = ChunkingConfig(chunk_size=500)
         chunker = create_chunker(config)
         
-        assert isinstance(chunker, PDFSemanticChunker)
+        assert isinstance(chunker, PDFTextChunker)
         assert chunker.config.chunk_size == 500
-        assert chunker.config.use_semantic_splitting is False
 
 
 class TestChunkerIntegration:
@@ -194,9 +178,8 @@ class TestChunkerIntegration:
         config = ChunkingConfig(
             chunk_size=200,
             chunk_overlap=50,
-            use_semantic_splitting=False
         )
-        chunker = PDFSemanticChunker(config)
+        chunker = PDFTextChunker(config)
         
         # Realistic document content
         content = """

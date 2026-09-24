@@ -80,7 +80,6 @@ class IngestionConfig(BaseModel):
     chunk_size: int = Field(default=850, ge=100, le=5000)
     chunk_overlap: int = Field(default=150, ge=0, le=1000)
     max_chunk_size: int = Field(default=2000, ge=500, le=10000)
-    use_semantic_chunking: bool = True
 
     @field_validator('chunk_overlap')
     @classmethod
