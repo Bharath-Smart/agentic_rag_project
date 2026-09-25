@@ -460,7 +460,7 @@ async def search_vector(request: SearchRequest):
         )
         
         start_time = datetime.now()
-        results = await vector_search_tool(input_data)
+        results = await vector_search_tool.ainvoke(input_data.model_dump())
         end_time = datetime.now()
         
         query_time = (end_time - start_time).total_seconds() * 1000
@@ -488,7 +488,7 @@ async def search_hybrid(request: SearchRequest):
         )
         
         start_time = datetime.now()
-        results = await hybrid_search_tool(input_data)
+        results = await hybrid_search_tool.ainvoke(input_data.model_dump())
         end_time = datetime.now()
         
         query_time = (end_time - start_time).total_seconds() * 1000
@@ -513,7 +513,7 @@ async def list_documents_endpoint(
     """List documents endpoint."""
     try:
         input_data = DocumentListInput(limit=limit, offset=offset)
-        documents = await list_documents_tool(input_data)
+        documents = await list_documents_tool.ainvoke(input_data.model_dump())
         
         return {
             "documents": documents,

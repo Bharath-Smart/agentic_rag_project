@@ -1,15 +1,15 @@
 
 import logging
-from typing import List, Dict, Any, Optional
+from typing import List, Optional
 from datetime import datetime
 from pydantic import BaseModel, Field
+from langchain.tools import tool
 
 from .db_utils import (
     vector_search,
     hybrid_search,
     get_document,
     list_documents,
-    get_document_chunks
 )
 from .models import ChunkResult, DocumentMetadata
 from .providers import get_embedding_client, get_embedding_model
@@ -59,25 +59,23 @@ class DocumentListInput(BaseModel):
     limit: int = Field(default=20, description="Maximum number of documents")
     offset: int = Field(default=0, description="Number of documents to skip")
 
-# Tool Implementation Functions
-async def vector_search_tool(input_data: VectorSearchInput) -> List[ChunkResult]:
-    """
-    Perform vector similarity search.
-    
-    Args:
-        input_data: Search parameters
-    
-    Returns:
-        List of matching chunks
-    """
+@tool(
+    "vector_search",
+    description="Search document chunks by semantic similarity and return the most relevant results.",
+    args_schema=VectorSearchInput,
+)
+async def vector_search_tool(
+    query: str,
+    limit: int = 10,
+) -> List[ChunkResult]:
     try:
         # Generate embedding for the query
-        embedding = await generate_embedding(input_data.query)
+        embedding = await generate_embedding(query)
         
         # Perform vector search
         results = await vector_search(
             embedding=embedding,
-            limit=input_data.limit
+            limit=limit
         )
 
         # Convert to ChunkResult models
@@ -98,26 +96,26 @@ async def vector_search_tool(input_data: VectorSearchInput) -> List[ChunkResult]
         logger.error(f"Vector search failed: {e}")
         return []
 
-async def hybrid_search_tool(input_data: HybridSearchInput) -> List[ChunkResult]:
-    """
-    Perform hybrid search (vector + keyword).
-    
-    Args:
-        input_data: Search parameters
-    
-    Returns:
-        List of matching chunks
-    """
+@tool(
+    "hybrid_search",
+    description="Combine semantic vector search and keyword search for comprehensive document results.",
+    args_schema=HybridSearchInput,
+)
+async def hybrid_search_tool(
+    query: str,
+    limit: int = 10,
+    text_weight: float = 0.3,
+) -> List[ChunkResult]:
     try:
         # Generate embedding for the query
-        embedding = await generate_embedding(input_data.query)
+        embedding = await generate_embedding(query)
         
         # Perform hybrid search
         results = await hybrid_search(
             embedding=embedding,
-            query_text=input_data.query,
-            limit=input_data.limit,
-            text_weight=input_data.text_weight
+            query_text=query,
+            limit=limit,
+            text_weight=text_weight
         )
         
         # Convert to ChunkResult models
@@ -138,43 +136,45 @@ async def hybrid_search_tool(input_data: HybridSearchInput) -> List[ChunkResult]
         logger.error(f"Hybrid search failed: {e}")
         return []
 
-async def get_document_tool(input_data: DocumentInput) -> Optional[Dict[str, Any]]:
-    """
-    Retrieve a complete document.
-    
-    Args:
-        input_data: Document retrieval parameters
-    
-    Returns:
-        Document data or None
-    """
+@tool(
+    "get_document",
+    description="Retrieve bounded metadata for a document by ID. Use vector or hybrid search to retrieve document content.",
+    args_schema=DocumentInput,
+)
+async def get_document_tool(
+    document_id: str,
+) -> Optional[DocumentMetadata]:
     try:
-        document = await get_document(input_data.document_id)
-        
-        if document:
-            chunks = await get_document_chunks(input_data.document_id)
-            document["chunks"] = chunks
-        
-        return document
+        document = await get_document(document_id)
+
+        if not document:
+            return None
+
+        return DocumentMetadata(
+            id=str(document["id"]),
+            title=document["title"],
+            source=document["source"],
+            created_at=datetime.fromisoformat(document["created_at"]),
+            updated_at=datetime.fromisoformat(document["updated_at"]),
+        )
         
     except Exception as e:
         logger.error(f"Document retrieval failed: {e}")
         return None
 
-async def list_documents_tool(input_data: DocumentListInput) -> List[DocumentMetadata]:
-    """
-    List available documents.
-    
-    Args:
-        input_data: Listing parameters
-    
-    Returns:
-        List of document metadata
-    """
+@tool(
+    "list_documents",
+    description="List ingested documents with their metadata and chunk counts.",
+    args_schema=DocumentListInput,
+)
+async def list_documents_tool(
+    limit: int = 20,
+    offset: int = 0,
+) -> List[DocumentMetadata]:
     try:
         documents = await list_documents(
-            limit=input_data.limit,
-            offset=input_data.offset
+            limit=limit,
+            offset=offset
         )
         
         # Convert to DocumentMetadata models
