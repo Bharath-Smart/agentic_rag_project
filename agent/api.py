@@ -147,6 +147,8 @@ async def get_conversation_context(
     """
     messages = await get_session_messages(session_id, limit=max_messages)
     
+    messages = list(reversed(messages));
+
     return [
         {
             "role": msg["role"],

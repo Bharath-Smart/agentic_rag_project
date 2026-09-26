@@ -222,7 +222,7 @@ async def get_session_messages(
                 created_at
             FROM messages
             WHERE session_id = $1::uuid
-            ORDER BY created_at
+            ORDER BY created_at DESC
         """
         
         if limit:
