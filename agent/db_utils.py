@@ -283,6 +283,29 @@ async def get_document(document_id: str) -> Optional[Dict[str, Any]]:
         return None
 
 
+async def find_document_ids_by_title(title: str) -> List[str]:
+    """
+    Find document IDs matching an exact document title.
+
+    Args:
+        title: Exact document title
+
+    Returns:
+        Matching document UUIDs as strings
+    """
+    async with db_pool.acquire() as conn:
+        results = await conn.fetch(
+            """
+            SELECT id::text
+            FROM documents
+            WHERE title = $1
+            """,
+            title
+        )
+
+        return [row["id"] for row in results]
+
+
 async def list_documents(
     limit: int = 100,
     offset: int = 0,

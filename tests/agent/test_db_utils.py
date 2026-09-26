@@ -14,6 +14,7 @@ from agent.db_utils import (
     add_message,
     get_session_messages,
     get_document,
+    find_document_ids_by_title,
     list_documents,
     vector_search,
     hybrid_search,
@@ -244,6 +245,20 @@ class TestDocumentManagement:
             assert document["id"] == "doc-123"
             assert document["title"] == "Test Document"
             assert document["metadata"] == {"author": "test"}
+
+    @pytest.mark.asyncio
+    async def test_find_document_ids_by_title(self):
+        """Test exact document title lookup."""
+        with patch('agent.db_utils.db_pool') as mock_pool:
+            mock_conn = AsyncMock()
+            mock_conn.fetch.return_value = [{"id": "doc-123"}]
+            mock_pool.acquire.return_value.__aenter__ = AsyncMock(return_value=mock_conn)
+            mock_pool.acquire.return_value.__aexit__ = AsyncMock(return_value=None)
+
+            document_ids = await find_document_ids_by_title("Test Document")
+
+            assert document_ids == ["doc-123"]
+            mock_conn.fetch.assert_called_once()
     
     @pytest.mark.asyncio
     async def test_list_documents(self):

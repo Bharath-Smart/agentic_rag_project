@@ -55,6 +55,7 @@ class DocumentMetadata(BaseModel):
     id: str
     title: str
     source: str
+    content: str = Field(default="", description="Document text content or bounded preview")
     metadata: Dict[str, Any] = Field(default_factory=dict)
     created_at: datetime
     updated_at: datetime

@@ -2,6 +2,7 @@
 import logging
 from typing import List, Optional
 from datetime import datetime
+from uuid import UUID
 from pydantic import BaseModel, Field
 from langchain.tools import tool
 
@@ -9,6 +10,7 @@ from .db_utils import (
     vector_search,
     hybrid_search,
     get_document,
+    find_document_ids_by_title,
     list_documents,
 )
 from .models import ChunkResult, DocumentMetadata
@@ -53,7 +55,7 @@ class HybridSearchInput(BaseModel):
     text_weight: float = Field(default=0.3, description="Weight for text similarity (0-1)")
 class DocumentInput(BaseModel):
     """Input for document retrieval."""
-    document_id: str = Field(..., description="Document ID to retrieve")
+    document_id: str = Field(..., description="Document UUID or exact document title to retrieve")
 class DocumentListInput(BaseModel):
     """Input for listing documents."""
     limit: int = Field(default=20, description="Maximum number of documents")
@@ -138,14 +140,27 @@ async def hybrid_search_tool(
 
 @tool(
     "get_document",
-    description="Retrieve bounded metadata for a document by ID. Use vector or hybrid search to retrieve document content.",
+    description="Retrieve bounded document metadata and a 500-character content preview by UUID or exact title.",
     args_schema=DocumentInput,
 )
 async def get_document_tool(
     document_id: str,
 ) -> Optional[DocumentMetadata]:
     try:
-        document = await get_document(document_id)
+        resolved_document_id = document_id
+        try:
+            UUID(document_id)
+        except ValueError:
+            matching_ids = await find_document_ids_by_title(document_id)
+            if len(matching_ids) != 1:
+                if not matching_ids:
+                    logger.warning(f"Document title not found: {document_id}")
+                else:
+                    logger.error(f"Multiple documents found for title: {document_id}")
+                return None
+            resolved_document_id = matching_ids[0]
+
+        document = await get_document(resolved_document_id)
 
         if not document:
             return None
@@ -154,6 +169,7 @@ async def get_document_tool(
             id=str(document["id"]),
             title=document["title"],
             source=document["source"],
+            content=document.get("content", "")[:500],
             created_at=datetime.fromisoformat(document["created_at"]),
             updated_at=datetime.fromisoformat(document["updated_at"]),
         )
