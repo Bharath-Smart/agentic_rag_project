@@ -157,6 +157,17 @@ async def get_conversation_context(
         for msg in messages
     ]
 
+
+def build_agent_messages(
+    message: str,
+    context: List[Dict[str, str]],
+) -> List[Dict[str, str]]:
+    """Build role-specific agent messages with bounded history."""
+    messages = list(context)
+    messages.append({"role": "user", "content": message})
+    return messages
+
+
 def extract_tool_calls(result: Dict[str, Any]) -> List[ToolCall]:
     """Extract tool calls from a LangChain agent result."""
     tools_used: List[ToolCall] = []
@@ -255,18 +266,9 @@ async def execute_agent(
         # Get conversation context
         context = await get_conversation_context(session_id)
         
-        # Build prompt with context
-        full_prompt = message
-        if context:
-            context_str = "\n".join([
-                f"{msg['role']}: {msg['content']}"
-                for msg in context[-6:]  # Last 3 turns
-            ])
-            full_prompt = f"Previous conversation:\n{context_str}\n\nCurrent question: {message}"
-        
         # Run the agent
         result = await rag_agent.ainvoke(
-            {"messages": [{"role": "user", "content": full_prompt}]}
+            {"messages": build_agent_messages(message, context)}
         )
 
         response = extract_response_text(result)
@@ -369,15 +371,6 @@ async def chat_stream(request: ChatRequest):
                 # Get conversation context
                 context = await get_conversation_context(session_id)
                 
-                # Build input with context
-                full_prompt = request.message
-                if context:
-                    context_str = "\n".join([
-                        f"{msg['role']}: {msg['content']}"
-                        for msg in context[-6:]
-                    ])
-                    full_prompt = f"Previous conversation:\n{context_str}\n\nCurrent question: {request.message}"
-                
                 # Save user message
                 await add_message(
                     session_id=session_id,
@@ -389,7 +382,10 @@ async def chat_stream(request: ChatRequest):
                 full_response = ""
                 stream_messages = []
                 async for chunk in rag_agent.astream(
-                    {"messages": [{"role": "user", "content": full_prompt}]},
+                    {"messages": build_agent_messages(
+                        request.message,
+                        context,
+                    )},
                     stream_mode=["messages", "updates"],
                     version="v2",
                 ):

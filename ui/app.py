@@ -37,6 +37,8 @@ async def stream_chat(message: str, base_url: str):
 
     response_box = st.empty()
     full_response = ""
+    error_message = None
+    completed = False
 
     async with aiohttp.ClientSession() as session:
         async with session.post(f"{base_url}/chat/stream", json=request_data) as resp:
@@ -57,7 +59,7 @@ async def stream_chat(message: str, base_url: str):
                     content = data.get("content", "")
                     full_response += content
                     response_box.write(full_response)
-                    
+
                 elif data.get("type") == "tools":
                     tools = data.get("tools", [])
                     for tool in tools:
@@ -65,17 +67,36 @@ async def stream_chat(message: str, base_url: str):
                         tool_args = tool.get("args", {})
                         full_response += f"\n [Tool: {tool_name}] \n Args: {tool_args}"
                     response_box.write(full_response)
-                    
-                elif data.get("type") == "end":
+
+                elif data.get("type") == "error":
+                    error_message = data.get("content") or "The chat request failed."
                     break
 
-    response_box.write(full_response)
+                elif data.get("type") == "end":
+                    completed = True
+                    break
+
+    if error_message:
+        response_box.error(error_message)
+        st.session_state.messages.append({
+            "role": "assistant",
+            "content": f"Error: {error_message}",
+        })
+        return
+
+    if not completed:
+        error_message = "The streaming response ended before completion."
+        response_box.error(error_message)
+        st.session_state.messages.append({
+            "role": "assistant",
+            "content": f"Error: {error_message}",
+        })
+        return
+
     st.session_state.messages.append({"role": "assistant", "content": full_response})
 
 def run_async(message: str, base_url: str):
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    loop.run_until_complete(stream_chat(message, base_url))
+    asyncio.run(stream_chat(message, base_url))
 
 # Sidebar
 with st.sidebar:
