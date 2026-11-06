@@ -1,10 +1,10 @@
-# Production-Oriented Agentic Knowledge Intelligence Platform
+# Agentic Knowledge Intelligence Platform
 
-An engineering project for building and evaluating an agentic Retrieval-Augmented Generation (RAG) application over PDF documents.
+An agentic Retrieval-Augmented Generation (RAG) application for conversational question answering over PDF documents.
 
-The repository began as an Agentic RAG foundation and is being extended toward a reliable, observable, and evaluation-driven knowledge intelligence platform. This README describes the **current implementation**, not every capability planned for the finished flagship project.
+The application ingests PDF documents into a PostgreSQL/pgvector knowledge base and uses an LLM-powered agent with retrieval and document tools to answer questions about that collection. This README documents the functionality currently implemented in this repository and its setup instructions.
 
-> **Current maturity:** working application foundation with PDF ingestion, vector/hybrid retrieval, agentic tool use, persisted chat sessions, and streaming. Evaluation, evidence/citation handling, failure semantics, authorization, and several production-readiness areas remain active engineering work. Do not interpret the project title as a claim that all production requirements are already satisfied.
+> **Current maturity:** working application foundation with PDF ingestion, vector/hybrid retrieval, agentic tool use, backend persistence of conversation sessions and messages, and streaming. Evaluation, evidence/citation handling, failure semantics, authorization, and several production-readiness areas remain active engineering work.
 
 ## Contents
 
@@ -18,7 +18,7 @@ The repository began as an Agentic RAG foundation and is being extended toward a
 - [Configuration](#configuration)
 - [Project structure](#project-structure)
 - [Tests](#tests)
-- [Known limitations and engineering roadmap](#known-limitations-and-engineering-roadmap)
+- [Known limitations](#known-limitations)
 - [Security and operational notes](#security-and-operational-notes)
 - [License](#license)
 
@@ -32,7 +32,7 @@ The current implementation provides:
 - **Persistence:** stores documents, chunks, metadata, and embeddings in PostgreSQL with pgvector.
 - **Retrieval:** exposes vector search and hybrid vector/full-text search.
 - **Agentic chat:** a LangChain v1 agent can select from vector search, hybrid search, document lookup, and document-listing tools.
-- **Conversation context:** persists user and final assistant messages and supplies up to 10 recent messages to the agent in chronological order with their roles preserved.
+- **Conversation persistence:** stores session records, user messages, and final assistant responses in PostgreSQL. Up to 10 recent messages are supplied to the agent in chronological order with their roles preserved.
 - **Streaming:** exposes chat responses through Server-Sent Events (SSE).
 - **Web interface:** provides a Streamlit chat UI.
 - **Containerized runtime:** runs PostgreSQL/pgvector, the FastAPI service, and Streamlit using Docker Compose.
@@ -440,9 +440,9 @@ The current test tree includes model, tool, API, database utility, UI/streaming,
 
 A test command in this README is an instruction, not a claim that the tests have been run successfully on every commit. Record actual test output when validating a change.
 
-## Known limitations and engineering roadmap
+## Known limitations
 
-The following are known gaps from the codebase investigation and finalized backlogs. They are not described as completed features.
+The following limitations describe behavior that is not currently implemented or not yet fully established.
 
 ### Retrieval and answer quality
 - Chat `search_type` does not enforce a retrieval mode; direct-search request fields `search_type` and `filters` do not control route behavior/filtering.
@@ -464,6 +464,7 @@ The following are known gaps from the codebase investigation and finalized backl
 ### Agent, sessions, and streaming
 - Only user messages and final assistant text are persisted; tool-call and tool-result messages are not replayed.
 - A fixed 10-message history is not a token-budget guarantee.
+- The UI does not currently provide a mechanism to rediscover and restore a previous conversation from persisted records.
 - Session identifiers are not a substitute for authentication or authorization; multi-user ownership enforcement is not established.
 - Backend stream cancellation, disconnect, retry, and incomplete-turn persistence semantics need further testing.
 - Tool activity is currently mixed into the displayed streamed response rather than presented in a separate diagnostics surface.
@@ -475,8 +476,6 @@ The following are known gaps from the codebase investigation and finalized backl
 - Schema initialization is not a versioned migration system; the SQL schema file contains destructive `DROP TABLE` statements and must not be used as a routine production migration.
 - Structured request tracing, tool-level metrics, token/cost tracking, and production observability remain to be implemented.
 - The system prompt still needs alignment with the intended general enterprise/technical knowledge domain.
-
-The engineering backlog prioritizes a repeatable evaluation baseline, reliable evidence and failure semantics, ingestion correctness, and proportionate production hardening. More infrastructure is not automatically better; proposed changes should be justified by evidence and project needs.
 
 ## Security and operational notes
 
